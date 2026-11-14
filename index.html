@@ -1,0 +1,360 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Water Dispenser Monitoring</title>
+
+  <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <!-- =========================
+         PAGE 1: HOME
+    ========================== -->
+    <section id="homePage" class="page active">
+
+      <header class="page-header">
+        <h1 class="page-title">
+          <span class="page-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>
+            </svg>
+          </span>
+          <span>หน้าแรก</span>
+        </h1>
+        <p>ระบบตรวจสอบปริมาณน้ำเครื่องกดน้ำ</p>
+        <p class="location">📍 ห้องสมุด มหาวิทยาลัยราชภัฏศรีสะเกษ</p>
+      </header>
+
+      <main>
+
+        <!-- Device Status Card -->
+        <div class="dashboard-card status-card">
+
+          <div class="device-heading">
+            <span class="device-icon">🚰</span>
+            <div>
+              <h2>เครื่องกดน้ำ ชั้น 3</h2>
+              <p>📍 ห้องสมุด ชั้น 3</p>
+            </div>
+          </div>
+
+          <div class="water-section">
+            <div class="water-label">
+              <span class="water-drop" aria-hidden="true">💧</span>
+              <p>ปริมาณน้ำคงเหลือ</p>
+            </div>
+
+            <div class="water-value-row">
+              <div class="water-value">
+                <span id="waterPercent">กำลังโหลด...</span>
+              </div>
+              <span id="waterStatus" class="status-badge">
+                กำลังตรวจสอบ
+              </span>
+            </div>
+
+            <div class="progress-track">
+              <div
+                id="waterProgress"
+                class="progress-fill"
+                style="width: 0%">
+              </div>
+            </div>
+          </div>
+
+          <div class="info-list">
+
+            <div class="info-row">
+              <span>ผู้รับผิดชอบ</span>
+              <strong id="responsibleStaff">กำลังโหลด...</strong>
+            </div>
+
+            <div class="info-row">
+              <span>อัปเดตล่าสุด</span>
+              <strong id="lastUpdated">กำลังโหลด...</strong>
+            </div>
+
+            <div class="info-row">
+              <span>เปลี่ยนถังล่าสุด</span>
+              <strong id="lastBottleChange">ยังไม่มีข้อมูล</strong>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- Go to History -->
+        <button
+          type="button"
+          class="navigation-card"
+          data-page="historyPage">
+
+          <span>📊 ดูประวัติย้อนหลัง</span>
+          <span>❯</span>
+
+        </button>
+
+      </main>
+    </section>
+
+
+    <!-- =========================
+         PAGE 2: HISTORY
+    ========================== -->
+    <section id="historyPage" class="page">
+
+      <header class="page-header">
+        <h1 class="page-title">
+          <span class="page-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 19V5M4 19h17"/>
+              <path d="m7 15 4-4 3 2 6-7"/>
+              <circle cx="7" cy="15" r="1"/>
+              <circle cx="11" cy="11" r="1"/>
+              <circle cx="14" cy="13" r="1"/>
+              <circle cx="20" cy="6" r="1"/>
+            </svg>
+          </span>
+          <span>กราฟย้อนหลัง</span>
+        </h1>
+        <p>ปริมาณน้ำย้อนหลัง (รายวัน/สัปดาห์)</p>
+      </header>
+
+      <main>
+
+        <!-- Filters -->
+        <div class="dashboard-card filter-card">
+          <label class="filter-control" for="deviceFilter">
+            <span aria-hidden="true">🚰</span>
+            <select id="deviceFilter" aria-label="เลือกเครื่องกดน้ำ">
+              <option value="device_01">เครื่องกดน้ำ ชั้น 3</option>
+            </select>
+          </label>
+
+          <label class="filter-control" for="periodFilter">
+            <span aria-hidden="true">▦</span>
+            <select id="periodFilter" aria-label="รูปแบบการแสดงผล">
+              <option value="daily">รายวัน</option>
+              <option value="7days">ย้อนหลัง 7 วัน</option>
+            </select>
+          </label>
+
+          <label class="filter-control date-control" for="dateFilter">
+            <span>วันที่</span>
+            <input type="date" id="dateFilter" aria-label="เลือกวันที่">
+          </label>
+        </div>
+
+        <!-- Chart -->
+        <div class="dashboard-card chart-card">
+
+          <div class="card-heading">
+            <h2>💧 ปริมาณน้ำคงเหลือ</h2>
+            <p>เครื่องกดน้ำ ชั้น 3</p>
+          </div>
+
+          <div class="chart-container">
+            <canvas id="waterChart"></canvas>
+          </div>
+
+          <p id="chartMessage" class="chart-message">
+            กำลังโหลดข้อมูลกราฟ...
+          </p>
+
+        </div>
+
+        <!-- Daily Summary -->
+        <div class="dashboard-card summary-card">
+
+          <h2>📅 สรุปข้อมูลประจำวัน</h2>
+
+          <div class="info-row">
+            <span>ปริมาณน้ำคงเหลือล่าสุด</span>
+            <strong id="dailyWater">-</strong>
+          </div>
+
+          <div class="info-row">
+            <span>สถานะ</span>
+            <strong id="dailyStatus">-</strong>
+          </div>
+
+        </div>
+
+      </main>
+    </section>
+
+
+    <!-- =========================
+         PAGE 3: SETTINGS
+    ========================== -->
+    <section id="settingsPage" class="page">
+
+      <header class="page-header">
+        <h1 class="page-title">
+          <span class="page-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.09a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </span>
+          <span>ตั้งค่า / แจ้งเตือน</span>
+        </h1>
+        <p>จัดการการตั้งค่าของเครื่องกดน้ำ</p>
+      </header>
+
+      <main>
+
+        <!-- Device Information -->
+        <div class="dashboard-card device-card">
+
+          <div class="device-heading">
+            <span class="device-icon">🚰</span>
+            <div>
+              <h2>เครื่องกดน้ำ ชั้น 3</h2>
+              <p>📍 ห้องสมุด ชั้น 3</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Alert Threshold -->
+        <div class="dashboard-card setting-item">
+
+          <div class="setting-icon">🔔</div>
+
+          <div class="setting-content">
+            <h3>เกณฑ์แจ้งเตือน</h3>
+            <p>แจ้งเตือนเมื่อปริมาณน้ำต่ำกว่าหรือเท่ากับ</p>
+          </div>
+
+          <div class="setting-value">
+            <input
+              type="number"
+              id="thresholdInput"
+              value="10"
+              min="0"
+              max="100">
+            <span>%</span>
+          </div>
+
+        </div>
+
+        <!-- LINE Group -->
+        <div class="dashboard-card setting-item line-group-setting">
+
+          <div class="setting-icon">💬</div>
+
+          <div class="setting-content">
+            <h3>กลุ่ม LINE</h3>
+            <p>ส่งการแจ้งเตือนไปยังกลุ่ม</p>
+          </div>
+
+          <div class="setting-value">
+            <input
+            type="text"
+            id="lineGroupInput"
+            placeholder="กรอก LINE Group ID"
+            >
+          </div>
+
+        </div>
+
+        <!-- Responsible Staff -->
+        <div class="dashboard-card setting-item">
+
+          <div class="setting-icon">👤</div>
+
+          <div class="setting-content">
+            <h3>ผู้รับผิดชอบปัจจุบัน</h3>
+            <p>ดูแลเครื่องกดน้ำ</p>
+          </div>
+
+          <div class="setting-value">
+            <span id="currentStaff">กำลังโหลด...</span>
+          </div>
+
+        </div>
+
+        <!-- Staff Schedule -->
+        <div class="dashboard-card setting-item">
+
+          <div class="setting-icon">📅</div>
+
+          <div class="setting-content">
+            <h3>กำหนดเวรรับผิดชอบ</h3>
+            <p>ตั้งค่าตารางเวรการดูแล</p>
+          </div>
+
+          <span class="setting-arrow">❯</span>
+
+        </div>
+
+        <!-- Save Button -->
+        <button
+          type="button"
+          id="saveSettingsBtn"
+          class="save-button">
+
+          💾 บันทึกการตั้งค่า
+
+        </button>
+
+        <p id="settingsMessage" class="settings-message"></p>
+
+      </main>
+    </section>
+
+
+    <!-- =========================
+         BOTTOM NAVIGATION
+    ========================== -->
+    <nav class="bottom-navigation">
+
+      <button
+        type="button"
+        class="nav-item active"
+        data-page="homePage">
+
+        <span>🏠</span>
+        <small>หน้าแรก</small>
+
+      </button>
+
+      <button
+        type="button"
+        class="nav-item"
+        data-page="historyPage">
+
+        <span>📊</span>
+        <small>กราฟย้อนหลัง</small>
+
+      </button>
+
+      <button
+        type="button"
+        class="nav-item"
+        data-page="settingsPage">
+
+        <span>⚙️</span>
+        <small>ตั้งค่า / แจ้งเตือน</small>
+
+      </button>
+
+    </nav>
+
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="script.js"></script>
+
+</body>
+</html>
+
+
