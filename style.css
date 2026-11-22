@@ -16,7 +16,7 @@
 
   --background: #eaf4fa;
   --surface: #ffffff;
-  --surface-soft: #f7fbff;
+  --surface-soft: #fbfdff;
 
   --text: #173e61;
   --text-muted: #637c95;
@@ -139,8 +139,8 @@ input:focus-visible {
     ),
     linear-gradient(
       155deg,
-      #dceeff 0%,
-      #edf6ff 55%,
+      #d6eaff 0%,
+      #e9f4fd 55%,
       var(--surface-soft) 100%
     );
 
