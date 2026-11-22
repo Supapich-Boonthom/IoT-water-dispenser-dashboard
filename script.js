@@ -1,20 +1,226 @@
 
-// =================================
-// PAGE NAVIGATION
-// =================================
+// =============================================
+// 1. API CONFIGURATION
+// =============================================
+
+const API_URL =
+  "https://script.google.com/macros/s/AKfycbwvnBSco1zPixavJ-Z7xT8nRw2w-TZrMgZC6lxmdSnUrAkzasxwAmBLtz0gXQywFnQJXA/exec";
+
+// คง Device ID เดิม ห้ามสลับ
+const DEVICES = [
+  {
+    id: "device_02",
+    name: "เครื่องกดน้ำ ชั้น 2",
+    location: "ห้องสมุด ชั้น 2"
+  },
+  {
+    id: "device_01",
+    name: "เครื่องกดน้ำ ชั้น 3",
+    location: "ห้องสมุด ชั้น 3"
+  }
+];
+
+const DAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday"
+];
+
+const DAY_LABELS = [
+  "วันอาทิตย์",
+  "วันจันทร์",
+  "วันอังคาร",
+  "วันพุธ",
+  "วันพฤหัสบดี",
+  "วันศุกร์",
+  "วันเสาร์"
+];
+
+const REFRESH_INTERVAL = 10000;
+
+
+// =============================================
+// 2. APPLICATION STATE
+// =============================================
+
+let selectedHomeDevice = "device_02";
+let selectedSettingsDevice = "device_02";
+
+let latestData = {};
+let staffData = {};
+let scheduleData = {};
+let settingsData = {};
+
+let waterChart = null;
+
+let isScheduleOpen = false;
+
+
+// =============================================
+// 3. HELPER FUNCTIONS
+// =============================================
+
+function getDevice(deviceId) {
+  return DEVICES.find(device => device.id === deviceId);
+}
+
+
+function getDeviceName(deviceId) {
+  const device = getDevice(deviceId);
+
+  return device ? device.name : deviceId;
+}
+
+
+function getElement(id) {
+  return document.getElementById(id);
+}
+
+
+function setText(id, value) {
+  const element = getElement(id);
+
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, value));
+}
+
+
+function getWaterStatus(percent) {
+  if (percent <= 10) {
+    return {
+      text: "วิกฤต",
+      className: "critical",
+      color: "var(--danger, #dc535b)"
+    };
+  }
+
+  if (percent <= 40) {
+    return {
+      text: "ใกล้หมด",
+      className: "low",
+      color: "var(--warning, #e5a33b)"
+    };
+  }
+
+  return {
+    text: "ปกติ",
+    className: "medium",
+    color: "var(--success, #26966b)"
+  };
+}
+
+
+function formatTimestamp(timestamp) {
+  if (!timestamp) return "-";
+
+  let date;
+
+  // รองรับทั้ง Unix timestamp และวันที่แบบข้อความ
+  if (
+    typeof timestamp === "number" ||
+    /^\d+$/.test(String(timestamp))
+  ) {
+    let number = Number(timestamp);
+
+    // รองรับ timestamp แบบ milliseconds
+    if (number > 9999999999) {
+      date = new Date(number);
+    } else {
+      date = new Date(number * 1000);
+    }
+  } else {
+    date = new Date(timestamp);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleString("th-TH", {
+    dateStyle: "short",
+    timeStyle: "short"
+  });
+}
+
+
+function getLocalDate(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+
+function getTodayDate() {
+  const date = new Date();
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+
+function getTodayDayName() {
+  return DAY_NAMES[new Date().getDay()];
+}
+
+
+async function fetchJSON(url) {
+  const response = await fetch(url, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return await response.json();
+}
+
+
+async function getAPI(action, deviceId, extra = {}) {
+  const params = new URLSearchParams({
+    action,
+    device_id: deviceId,
+    ...extra
+  });
+
+  return await fetchJSON(`${API_URL}?${params.toString()}`);
+}
+
+
+// =============================================
+// 4. PAGE NAVIGATION
+// =============================================
 
 const pages = document.querySelectorAll(".page");
 const navItems = document.querySelectorAll(".nav-item");
 const pageButtons = document.querySelectorAll("[data-page]");
 
+
 function showPage(pageId) {
+  const selectedPage = getElement(pageId);
+
+  if (!selectedPage) return;
+
   pages.forEach(page => {
     page.classList.remove("active");
   });
-
-  const selectedPage = document.getElementById(pageId);
-
-  if (!selectedPage) return;
 
   selectedPage.classList.add("active");
 
@@ -30,7 +236,6 @@ function showPage(pageId) {
     behavior: "smooth"
   });
 
-  // โหลดข้อมูลตามหน้าที่เปิด
   if (pageId === "historyPage") {
     loadHistoryData();
   }
@@ -40,362 +245,817 @@ function showPage(pageId) {
   }
 }
 
+
 pageButtons.forEach(button => {
   button.addEventListener("click", () => {
     showPage(button.dataset.page);
   });
 });
 
-// เริ่มต้นที่หน้าแรก
-showPage("homePage");
+
+navItems.forEach(button => {
+  button.addEventListener("click", () => {
+    showPage(button.dataset.page);
+  });
+});
 
 
-// =================================
-// API CONFIGURATION
-// =================================
+// =============================================
+// 5. HOME: LOAD LATEST DATA
+// =============================================
 
-const API_URL = "https://script.google.com/macros/s/AKfycbwvnBSco1zPixavJ-Z7xT8nRw2w-TZrMgZC6lxmdSnUrAkzasxwAmBLtz0gXQywFnQJXA/exec";
-
-const DEVICE_ID = "device_01";
-
-
-// =================================
-// GET LATEST WATER DATA
-// =================================
-
-async function loadLatestData() {
+async function loadDeviceLatest(device) {
   try {
-    const url =
-      `${API_URL}?action=latest&device_id=${DEVICE_ID}`;
-
-    const response = await fetch(url, {
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error("ไม่สามารถเชื่อมต่อ API ได้");
-    }
-
-    const result = await response.json();
+    const result = await getAPI(
+      "latest",
+      device.id
+    );
 
     if (!result.success || !result.data) {
-      throw new Error("ไม่พบข้อมูลระดับน้ำ");
+      throw new Error(
+        result.message || "ไม่พบข้อมูลระดับน้ำ"
+      );
     }
 
     const data = result.data;
-    const waterPercent = Number(data.water_percent);
+    const percent = Number(data.water_percent);
 
-    if (!Number.isFinite(waterPercent)) {
+    if (!Number.isFinite(percent)) {
       throw new Error("ข้อมูลระดับน้ำไม่ถูกต้อง");
     }
 
-    // แสดงเปอร์เซ็นต์น้ำ
-    document.getElementById("waterPercent").textContent =
-      waterPercent.toFixed(1) + "%";
+    latestData[device.id] = data;
 
-    // แสดงแถบระดับน้ำ
-    const progress = document.getElementById("waterProgress");
+    updateOverviewCard(device.id, percent);
 
-    progress.style.width =
-      Math.max(0, Math.min(100, waterPercent)) + "%";
+    updateSelectedDevice();
 
-    // ตรวจสอบสถานะน้ำ
-    const statusElement =
-      document.getElementById("waterStatus");
-
-    if (waterPercent <= 10) {
-      statusElement.textContent = "วิกฤต";
-      statusElement.className = "status-badge critical";
-      progress.style.background = "var(--danger)";
-
-    } else if (waterPercent <= 40) {
-      statusElement.textContent = "ใกล้หมด";
-      statusElement.className = "status-badge low";
-      progress.style.background = "var(--warning)";
-
-    } else if (waterPercent <= 70) {
-      statusElement.textContent = "ปกติ";
-      statusElement.className = "status-badge medium";
-      progress.style.background = "var(--success)";
-
-    } else {
-      statusElement.textContent = "ปกติ";
-      statusElement.className = "status-badge";
-      progress.style.background = "var(--success)";
-    }
-
-    // แสดงเวลาอัปเดตล่าสุด
-    const updatedTime = new Date(
-      Number(data.created_at) * 1000
+    console.log(
+      "โหลดข้อมูลล่าสุดสำเร็จ:",
+      device.id,
+      percent
     );
 
-    document.getElementById("lastUpdated").textContent =
-      updatedTime.toLocaleString("th-TH", {
-        dateStyle: "short",
-        timeStyle: "short"
-      });
-
-    console.log("อัปเดตข้อมูลสำเร็จ:", data);
-
   } catch (error) {
-    console.error("เกิดข้อผิดพลาด:", error);
+    console.error(
+      "โหลดข้อมูลเครื่องไม่สำเร็จ:",
+      device.id,
+      error
+    );
 
-    document.getElementById("waterPercent").textContent =
-      "ไม่สามารถโหลดข้อมูล";
-
-    document.getElementById("waterStatus").textContent =
-      "เชื่อมต่อไม่สำเร็จ";
+    updateOverviewError(device.id);
   }
 }
 
-// โหลดข้อมูลเมื่อเปิดเว็บไซต์
-loadLatestData();
 
-// อัปเดตทุก 10 วินาที
-setInterval(loadLatestData, 10000);
+async function loadAllLatestData() {
+  await Promise.all(
+    DEVICES.map(device => loadDeviceLatest(device))
+  );
+}
 
 
-// =================================
-// LOAD RESPONSIBLE STAFF
-// =================================
+// =============================================
+// 6. HOME: UPDATE OVERVIEW CARDS
+// =============================================
 
-async function loadResponsibleStaff() {
-  try {
-    const url =
-      `${API_URL}?action=staff&device_id=${DEVICE_ID}`;
+function updateOverviewCard(deviceId, percent) {
+  const status = getWaterStatus(percent);
+  const safePercent = clampPercent(percent);
 
-    const response = await fetch(url, {
-      cache: "no-store"
-    });
+  const percentElement =
+    getElement(`overviewPercent_${deviceId}`);
 
-    if (!response.ok) {
-      throw new Error("ไม่สามารถเชื่อมต่อ API เจ้าหน้าที่ได้");
-    }
+  const statusElement =
+    getElement(`overviewStatus_${deviceId}`);
 
-    const result = await response.json();
+  const progressElement =
+    getElement(`overviewProgress_${deviceId}`);
 
-    if (!result.success) {
-      throw new Error("ไม่สามารถอ่านข้อมูลเจ้าหน้าที่ได้");
-    }
+  if (percentElement) {
+    percentElement.textContent =
+      `${percent.toFixed(1)}%`;
+  }
 
-    const staffName = result.data
-      ? result.data.staff_name
-      : "ยังไม่ได้กำหนดผู้รับผิดชอบ";
+  if (statusElement) {
+    statusElement.textContent = status.text;
+    statusElement.className =
+      `status-badge ${status.className}`;
+  }
 
-    const homeStaff =
-      document.getElementById("responsibleStaff");
+  if (progressElement) {
+    progressElement.style.width =
+      `${safePercent}%`;
 
-    const settingsStaff =
-      document.getElementById("currentStaff");
-
-    if (homeStaff) {
-      homeStaff.textContent = staffName;
-    }
-
-    if (settingsStaff) {
-      settingsStaff.textContent = staffName;
-    }
-
-    console.log("โหลดข้อมูลเจ้าหน้าที่สำเร็จ:", staffName);
-
-  } catch (error) {
-    console.error("เกิดข้อผิดพลาดในการโหลดเจ้าหน้าที่:", error);
-
-    const homeStaff =
-      document.getElementById("responsibleStaff");
-
-    const settingsStaff =
-      document.getElementById("currentStaff");
-
-    if (homeStaff) {
-      homeStaff.textContent = "โหลดข้อมูลไม่สำเร็จ";
-    }
-
-    if (settingsStaff) {
-      settingsStaff.textContent = "โหลดข้อมูลไม่สำเร็จ";
-    }
+    progressElement.style.background =
+      status.color;
   }
 }
 
-loadResponsibleStaff();
 
-setInterval(loadResponsibleStaff, 60000);
+function updateOverviewError(deviceId) {
+  const percentElement =
+    getElement(`overviewPercent_${deviceId}`);
+
+  const statusElement =
+    getElement(`overviewStatus_${deviceId}`);
+
+  if (percentElement) {
+    percentElement.textContent = "--%";
+  }
+
+  if (statusElement) {
+    statusElement.textContent = "ไม่มีข้อมูล";
+    statusElement.className = "status-badge";
+  }
+}
 
 
-// =================================
-// HISTORY CHART
-// =================================
+// =============================================
+// 7. HOME: SELECT DEVICE
+// =============================================
 
-let waterChart = null;
+function selectHomeDevice(deviceId) {
+  if (!getDevice(deviceId)) return;
 
-async function loadHistoryData() {
-  const deviceId =
-    document.getElementById("deviceFilter").value;
+  selectedHomeDevice = deviceId;
 
-  const period =
-    document.getElementById("periodFilter").value;
+  document.querySelectorAll("[data-device-select]")
+    .forEach(button => {
 
-  const chartMessage =
-    document.getElementById("chartMessage");
+      const isSelected =
+        button.dataset.deviceSelect === deviceId;
 
-  const dailyWater =
-    document.getElementById("dailyWater");
+      button.classList.toggle("active", isSelected);
 
-  const dailyStatus =
-    document.getElementById("dailyStatus");
-
-  const dateFilter =
-    document.getElementById("dateFilter");
-
-  try {
-    chartMessage.textContent = "กำลังโหลดข้อมูลกราฟ...";
-
-    // ดึงข้อมูลย้อนหลังสูงสุด 100 รายการ
-    const url =
-      `${API_URL}?action=history&device_id=${deviceId}&limit=100`;
-
-    const response = await fetch(url, {
-      cache: "no-store"
+      button.setAttribute(
+        "aria-pressed",
+        String(isSelected)
+      );
     });
 
-    if (!response.ok) {
-      throw new Error("ไม่สามารถเชื่อมต่อ API ได้");
+  updateSelectedDevice();
+}
+
+
+document.querySelectorAll("[data-device-select]")
+  .forEach(button => {
+
+    button.addEventListener("click", () => {
+      selectHomeDevice(button.dataset.deviceSelect);
+    });
+
+  });
+
+
+// =============================================
+// 8. HOME: SHOW SELECTED DEVICE DETAILS
+// =============================================
+
+function updateSelectedDevice() {
+  const device = getDevice(selectedHomeDevice);
+
+  if (!device) return;
+
+  setText("selectedDeviceName", device.name);
+
+  setText(
+    "selectedDeviceLocation",
+    `📍 ${device.location}`
+  );
+
+  const data = latestData[selectedHomeDevice];
+
+  if (!data) {
+    setText("selectedWaterPercent", "--%");
+    setText("selectedLastUpdated", "ไม่มีข้อมูล");
+
+    const statusElement =
+      getElement("selectedDeviceStatus");
+
+    if (statusElement) {
+      statusElement.textContent = "ไม่มีข้อมูล";
+      statusElement.className = "status-badge";
     }
 
-    const result = await response.json();
+    return;
+  }
+
+  const percent = Number(data.water_percent);
+  const status = getWaterStatus(percent);
+
+  setText(
+    "selectedWaterPercent",
+    `${percent.toFixed(1)}%`
+  );
+
+  const statusElement =
+    getElement("selectedDeviceStatus");
+
+  if (statusElement) {
+    statusElement.textContent = status.text;
+
+    statusElement.className =
+      `status-badge ${status.className}`;
+  }
+
+  const progress =
+    getElement("selectedWaterProgress");
+
+  if (progress) {
+    progress.style.width =
+      `${clampPercent(percent)}%`;
+
+    progress.style.background =
+      status.color;
+  }
+
+  setText(
+    "selectedLastUpdated",
+    formatTimestamp(data.created_at)
+  );
+
+  setText(
+    "selectedLastBottleChange",
+    "ยังไม่มีข้อมูล"
+  );
+
+  const staffName =
+    staffData[selectedHomeDevice];
+
+  setText(
+    "selectedResponsibleStaff",
+    staffName || "กำลังโหลด..."
+  );
+}
+
+
+// =============================================
+// 9. STAFF: LOAD WEEKLY SCHEDULE
+// =============================================
+
+async function loadStaffSchedule(deviceId) {
+  try {
+    const result = await getAPI(
+      "staff_schedule",
+      deviceId
+    );
 
     if (!result.success) {
       throw new Error(
-        result.message || "โหลดข้อมูลย้อนหลังไม่สำเร็จ"
+        result.message || "โหลดตารางเวรไม่สำเร็จ"
       );
     }
 
-    let history = result.data || [];
+    scheduleData[deviceId] = {
+      data: result.data || [],
+      staffList: result.staff_list || []
+    };
 
-    // เรียงข้อมูลจากเก่าไปใหม่
-    history.sort((a, b) =>
-      Number(a.created_at) - Number(b.created_at)
+    updateCurrentStaff(deviceId);
+
+    return scheduleData[deviceId];
+
+  } catch (error) {
+    console.error(
+      "โหลดตารางเวรไม่สำเร็จ:",
+      deviceId,
+      error
     );
 
-    // แปลง Timestamp เป็นวันที่ท้องถิ่น
-    function getLocalDate(timestamp) {
-      const date = new Date(Number(timestamp) * 1000);
+    throw error;
+  }
+}
 
-      return [
-        date.getFullYear(),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        String(date.getDate()).padStart(2, "0")
-      ].join("-");
+
+// =============================================
+// 10. STAFF: CURRENT RESPONSIBLE PERSON
+// =============================================
+
+function updateCurrentStaff(deviceId) {
+  const schedule = scheduleData[deviceId];
+
+  if (!schedule) return;
+
+  const today = getTodayDayName();
+
+  const todayAssignment = schedule.data.find(item =>
+    item.day_of_week === today
+  );
+
+  const staffName =
+    todayAssignment?.staff_name ||
+    "ยังไม่ได้กำหนดผู้รับผิดชอบ";
+
+  staffData[deviceId] = staffName;
+
+  if (deviceId === selectedHomeDevice) {
+    setText(
+      "selectedResponsibleStaff",
+      staffName
+    );
+  }
+
+  if (deviceId === selectedSettingsDevice) {
+    setText(
+      "currentStaff",
+      staffName
+    );
+  }
+}
+
+
+// =============================================
+// 11. STAFF: LOAD HOME STAFF
+// =============================================
+
+async function loadAllStaff() {
+  await Promise.all(
+    DEVICES.map(async device => {
+      try {
+        await loadStaffSchedule(device.id);
+      } catch (error) {
+        staffData[device.id] =
+          "โหลดข้อมูลไม่สำเร็จ";
+
+        if (device.id === selectedHomeDevice) {
+          setText(
+            "selectedResponsibleStaff",
+            "โหลดข้อมูลไม่สำเร็จ"
+          );
+        }
+      }
+    })
+  );
+
+  updateSelectedDevice();
+}
+
+
+// =============================================
+// 12. HISTORY: FETCH DEVICE HISTORY
+// =============================================
+
+async function fetchDeviceHistory(deviceId) {
+  const result = await getAPI(
+    "history",
+    deviceId,
+    { limit: "100" }
+  );
+
+  if (!result.success) {
+    throw new Error(
+      result.message || "โหลดข้อมูลย้อนหลังไม่สำเร็จ"
+    );
+  }
+
+  return (result.data || [])
+    .map(item => ({
+      ...item,
+      device_id: deviceId
+    }))
+    .sort((a, b) =>
+      Number(a.created_at) - Number(b.created_at)
+    );
+}
+
+
+// =============================================
+// 13. HISTORY: PREPARE DAILY DATA
+// =============================================
+
+function prepareDailyData(history, selectedDate) {
+  return history.filter(item =>
+    getLocalDate(item.created_at) === selectedDate
+  );
+}
+
+
+// =============================================
+// 14. HISTORY: PREPARE 7-DAY DATA
+// =============================================
+
+function prepareWeeklyData(history, selectedDate) {
+  const endDate = new Date(
+    `${selectedDate}T00:00:00`
+  );
+
+  endDate.setHours(23, 59, 59, 999);
+
+  const startDate = new Date(endDate);
+
+  startDate.setDate(startDate.getDate() - 6);
+  startDate.setHours(0, 0, 0, 0);
+
+  const startTimestamp =
+    Math.floor(startDate.getTime() / 1000);
+
+  const endTimestamp =
+    Math.floor(endDate.getTime() / 1000);
+
+  const filtered = history.filter(item => {
+    const timestamp = Number(item.created_at);
+
+    return (
+      timestamp >= startTimestamp &&
+      timestamp <= endTimestamp
+    );
+  });
+
+  const groups = {};
+
+  filtered.forEach(item => {
+    const date = getLocalDate(item.created_at);
+
+    if (!groups[date]) {
+      groups[date] = [];
     }
 
-    // กำหนดวันที่เริ่มต้นเป็นวันที่ล่าสุดที่มีข้อมูล
-    if (!dateFilter.value && history.length > 0) {
-      dateFilter.value = getLocalDate(
-        history[history.length - 1].created_at
-      );
-    }
+    groups[date].push(
+      Number(item.water_percent)
+    );
+  });
 
-    // ใช้วันที่ที่เลือก หรือวันที่ล่าสุดที่มีข้อมูล
-    const selectedDate = dateFilter.value ||
-      (history.length > 0
-        ? getLocalDate(history[history.length - 1].created_at)
-        : "");
+  return Object.keys(groups)
+    .sort()
+    .map(date => ({
+      date,
+      water_percent:
+        groups[date].reduce(
+          (sum, value) => sum + value,
+          0
+        ) / groups[date].length
+    }));
+}
 
-    let chartData = [];
-    let labels = [];
 
-    // =================================
-    // MODE 1: DAILY
-    // =================================
+// =============================================
+// 15. HISTORY: UPDATE SUMMARY
+// =============================================
+
+function updateHistorySummary(deviceHistories, selectedDate, period) {
+  const dailyWater = getElement("dailyWater");
+  const dailyStatus = getElement("dailyStatus");
+
+  if (!dailyWater || !dailyStatus) return;
+
+  const deviceFilter =
+    getElement("deviceFilter").value;
+
+  const summaries = [];
+
+  deviceHistories.forEach(item => {
+    let data;
 
     if (period === "daily") {
-      dateFilter.style.display = "";
-
-      // เลือกข้อมูลเฉพาะวันที่กำหนด
-      chartData = history.filter(item =>
-        getLocalDate(item.created_at) === selectedDate
+      data = prepareDailyData(
+        item.history,
+        selectedDate
       );
-
-      // แสดงเวลาแบบชั่วโมง:นาที
-      labels = chartData.map(item =>
-        new Date(Number(item.created_at) * 1000)
-          .toLocaleTimeString("th-TH", {
-            hour: "2-digit",
-            minute: "2-digit"
-          })
+    } else {
+      data = prepareWeeklyData(
+        item.history,
+        selectedDate
       );
     }
 
-    // =================================
-    // MODE 2: LAST 7 DAYS
-    // =================================
+    if (data.length === 0) return;
 
-    else if (period === "7days") {
-      dateFilter.style.display = "none";
+    const latest = data[data.length - 1];
+    const percent = Number(latest.water_percent);
 
-      // ใช้วันที่ที่เลือกเป็นวันสุดท้ายของช่วง
-      const endDate = new Date(
-        selectedDate + "T00:00:00"
+    summaries.push({
+      name: item.device.name.replace("เครื่องกดน้ำ ", ""),
+      percent
+    });
+  });
+
+  if (summaries.length === 0) {
+    dailyWater.textContent = "-";
+    dailyStatus.textContent = "ไม่มีข้อมูล";
+    return;
+  }
+
+  if (deviceFilter === "all") {
+    dailyWater.textContent = summaries
+      .map(item =>
+        `${item.name} ${item.percent.toFixed(1)}%`
+      )
+      .join(" | ");
+
+    dailyStatus.textContent = summaries
+      .map(item => {
+        const status = getWaterStatus(item.percent);
+
+        return `${item.name}: ${status.text}`;
+      })
+      .join(" | ");
+
+  } else {
+    const item = summaries[0];
+    const status = getWaterStatus(item.percent);
+
+    dailyWater.textContent =
+      `${item.percent.toFixed(1)}%`;
+
+    dailyStatus.textContent = status.text;
+  }
+}
+
+
+// =============================================
+// 16. HISTORY: BUILD CHART DATASETS
+// =============================================
+
+function buildHistoryDatasets(deviceHistories, selectedDate, period) {
+  const datasets = [];
+  const allLabels = new Set();
+
+  const colors = {
+    device_02: "#368fc4",
+    device_01: "#26966b"
+  };
+
+  deviceHistories.forEach(item => {
+    let data;
+
+    if (period === "daily") {
+      data = prepareDailyData(
+        item.history,
+        selectedDate
       );
-
-      endDate.setHours(23, 59, 59, 999);
-
-      const startDate = new Date(endDate);
-
-      startDate.setDate(startDate.getDate() - 6);
-      startDate.setHours(0, 0, 0, 0);
-
-      const startTimestamp =
-        Math.floor(startDate.getTime() / 1000);
-
-      const endTimestamp =
-        Math.floor(endDate.getTime() / 1000);
-
-      const filtered = history.filter(item =>
-        Number(item.created_at) >= startTimestamp &&
-        Number(item.created_at) <= endTimestamp
+    } else {
+      data = prepareWeeklyData(
+        item.history,
+        selectedDate
       );
+    }
 
-      // รวมข้อมูลเป็นค่าเฉลี่ยรายวัน
-      const dailyGroups = {};
+    data.forEach(point => {
+      allLabels.add(
+        period === "daily"
+          ? String(point.created_at)
+          : point.date
+      );
+    });
 
-      filtered.forEach(item => {
-        const date = getLocalDate(item.created_at);
+    datasets.push({
+      deviceId: item.device.id,
+      label: item.device.name,
+      data,
+      color: colors[item.device.id]
+    });
+  });
 
-        if (!dailyGroups[date]) {
-          dailyGroups[date] = [];
-        }
+  const labels = Array.from(allLabels).sort((a, b) => {
+    if (period === "daily") {
+      return Number(a) - Number(b);
+    }
 
-        dailyGroups[date].push(
-          Number(item.water_percent)
-        );
-      });
+    return a.localeCompare(b);
+  });
 
-      chartData = Object.keys(dailyGroups)
-        .sort()
-        .map(date => ({
-          date: date,
-          water_percent:
-            dailyGroups[date].reduce(
-              (sum, value) => sum + value, 0
-            ) / dailyGroups[date].length
-        }));
+  const chartDatasets = datasets.map(dataset => {
+    const dataMap = new Map();
 
-      labels = chartData.map(item => {
-        const date = new Date(item.date + "T00:00:00");
+    dataset.data.forEach(point => {
+      const key = period === "daily"
+        ? String(point.created_at)
+        : point.date;
 
-        return date.toLocaleDateString("th-TH", {
-          day: "numeric",
-          month: "short"
+      dataMap.set(key, Number(point.water_percent));
+    });
+
+    return {
+      label: dataset.label,
+
+      data: labels.map(label =>
+        dataMap.has(label)
+          ? dataMap.get(label)
+          : null
+      ),
+
+      borderColor: dataset.color,
+      backgroundColor: dataset.color,
+
+      borderWidth: 2,
+      tension: 0.3,
+      spanGaps: false,
+
+      fill: false,
+
+      pointRadius: 3,
+      pointHoverRadius: 6
+    };
+  });
+
+  return {
+    labels,
+    chartDatasets
+  };
+}
+
+
+// =============================================
+// 17. HISTORY: DISPLAY CHART
+// =============================================
+
+function displayHistoryChart(
+  labels,
+  datasets,
+  period
+) {
+  const canvas = getElement("waterChart");
+
+  if (!canvas || typeof Chart === "undefined") {
+    throw new Error("ไม่พบ Chart.js");
+  }
+
+  if (waterChart) {
+    waterChart.destroy();
+    waterChart = null;
+  }
+
+  const displayLabels = labels.map(label => {
+    if (period === "daily") {
+      return new Date(Number(label) * 1000)
+        .toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit"
         });
-      });
     }
 
-    // =================================
-    // NO DATA
-    // =================================
+    return new Date(`${label}T00:00:00`)
+      .toLocaleDateString("th-TH", {
+        day: "numeric",
+        month: "short"
+      });
+  });
 
-    if (chartData.length === 0) {
+  const rawLabels = labels.slice();
+
+  waterChart = new Chart(canvas, {
+    type: "line",
+
+    data: {
+      labels: displayLabels,
+      datasets
+    },
+
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+
+      interaction: {
+        mode: "nearest",
+        intersect: false
+      },
+
+      plugins: {
+        legend: {
+          display: true,
+          position: "bottom"
+        },
+
+        tooltip: {
+          enabled: true,
+
+          callbacks: {
+            title(items) {
+              if (!items.length) return "";
+
+              const index = items[0].dataIndex;
+              const rawLabel = rawLabels[index];
+
+              if (period === "daily") {
+                return new Date(Number(rawLabel) * 1000)
+                  .toLocaleString("th-TH", {
+                    dateStyle: "medium",
+                    timeStyle: "medium"
+                  });
+              }
+
+              return new Date(`${rawLabel}T00:00:00`)
+                .toLocaleDateString("th-TH", {
+                  dateStyle: "full"
+                });
+            },
+
+            label(context) {
+              if (context.parsed.y === null) {
+                return "";
+              }
+
+              return (
+                `${context.dataset.label}: ` +
+                `${context.parsed.y.toFixed(1)}%`
+              );
+            }
+          }
+        }
+      },
+
+      scales: {
+        y: {
+          min: 0,
+          max: 100,
+
+          title: {
+            display: true,
+            text: "ปริมาณน้ำ (%)"
+          }
+        },
+
+        x: {
+          ticks: {
+            autoSkip: true,
+            maxTicksLimit: period === "daily" ? 6 : 7,
+            maxRotation: 0
+          },
+
+          title: {
+            display: true,
+            text: period === "daily" ? "เวลา" : "วันที่"
+          }
+        }
+      }
+    }
+  });
+}
+
+
+// =============================================
+// 18. HISTORY: LOAD DATA
+// =============================================
+
+async function loadHistoryData() {
+  const deviceFilter = getElement("deviceFilter");
+  const periodFilter = getElement("periodFilter");
+  const dateFilter = getElement("dateFilter");
+
+  const chartMessage = getElement("chartMessage");
+  const chartDeviceName = getElement("chartDeviceName");
+
+  if (
+    !deviceFilter ||
+    !periodFilter ||
+    !dateFilter ||
+    !chartMessage
+  ) {
+    return;
+  }
+
+  const deviceId = deviceFilter.value;
+  const period = periodFilter.value;
+
+  if (period === "daily") {
+    dateFilter.style.display = "";
+  } else {
+    dateFilter.style.display = "none";
+  }
+
+  if (!dateFilter.value) {
+    dateFilter.value = getTodayDate();
+  }
+
+  const selectedDate = dateFilter.value;
+
+  chartMessage.textContent =
+    "กำลังโหลดข้อมูลกราฟ...";
+
+  try {
+    // เลือกเครื่องที่ต้องการดึงข้อมูล
+    const selectedDevices = deviceId === "all"
+      ? DEVICES
+      : DEVICES.filter(device => device.id === deviceId);
+
+    // ดึงข้อมูลแยกแต่ละเครื่อง
+    const deviceHistories = await Promise.all(
+      selectedDevices.map(async device => ({
+        device,
+        history: await fetchDeviceHistory(device.id)
+      }))
+    );
+
+    if (chartDeviceName) {
+      chartDeviceName.textContent =
+        deviceId === "all"
+          ? "ภาพรวมเครื่องกดน้ำ ชั้น 2 และชั้น 3"
+          : getDeviceName(deviceId);
+    }
+
+    // สร้างข้อมูลกราฟ
+    const chartResult = buildHistoryDatasets(
+      deviceHistories,
+      selectedDate,
+      period
+    );
+
+    const hasData = chartResult.chartDatasets.some(dataset =>
+      dataset.data.some(value => value !== null)
+    );
+
+    if (!hasData) {
       if (waterChart) {
         waterChart.destroy();
         waterChart = null;
@@ -404,302 +1064,332 @@ async function loadHistoryData() {
       chartMessage.textContent =
         "ไม่มีข้อมูลในช่วงเวลาที่เลือก";
 
-      dailyWater.textContent = "-";
-      dailyStatus.textContent = "-";
+      setText("dailyWater", "-");
+      setText("dailyStatus", "ไม่มีข้อมูล");
 
       return;
     }
 
-    // =================================
-    // PREPARE CHART DATA
-    // =================================
-
-    const values = chartData.map(item =>
-      Number(item.water_percent)
+    displayHistoryChart(
+      chartResult.labels,
+      chartResult.chartDatasets,
+      period
     );
 
-    const ctx =
-      document.getElementById("waterChart").getContext("2d");
+    updateHistorySummary(
+      deviceHistories,
+      selectedDate,
+      period
+    );
 
-    // ลบกราฟเดิมก่อนสร้างกราฟใหม่
-    if (waterChart) {
-      waterChart.destroy();
-    }
-
-    // =================================
-    // CREATE CHART
-    // =================================
-
-    waterChart = new Chart(ctx, {
-      type: "line",
-
-      data: {
-        labels: labels,
-
-        datasets: [{
-          label: period === "daily"
-            ? "ปริมาณน้ำคงเหลือ (%)"
-            : "ปริมาณน้ำเฉลี่ยรายวัน (%)",
-
-          data: values,
-
-          borderColor: "#368fc4",
-          backgroundColor: "rgba(54, 143, 196, 0.12)",
-
-          borderWidth: 2,
-          fill: true,
-          tension: 0.3,
-
-          pointRadius: 3,
-          pointHoverRadius: 7,
-          pointHitRadius: 12
-        }]
-      },
-
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-
-        // แสดง Tooltip ของจุดที่เลือก
-        interaction: {
-          mode: "nearest",
-          intersect: true
-        },
-
-        plugins: {
-          tooltip: {
-            enabled: true,
-
-            callbacks: {
-              // แสดงวันและเวลาจริงเมื่อเลือกจุด
-              title: function(items) {
-                if (!items.length) return "";
-
-                const index = items[0].dataIndex;
-                const point = chartData[index];
-
-                if (period === "daily") {
-                  const readingDate = new Date(
-                    Number(point.created_at) * 1000
-                  );
-
-                  return readingDate.toLocaleString("th-TH", {
-                    dateStyle: "medium",
-                    timeStyle: "medium"
-                  });
-                }
-
-                const date = new Date(
-                  point.date + "T00:00:00"
-                );
-
-                return date.toLocaleDateString("th-TH", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric"
-                });
-              },
-
-              // แสดงเปอร์เซ็นต์น้ำ
-              label: function(context) {
-                return `ปริมาณน้ำ: ${context.parsed.y.toFixed(1)}%`;
-              },
-
-              // เพิ่มคำอธิบายเฉพาะโหมด 7 วัน
-              afterLabel: function() {
-                if (period === "7days") {
-                  return "ค่าเฉลี่ยประจำวัน";
-                }
-
-                return "";
-              }
-            }
-          }
-        },
-
-        scales: {
-          y: {
-            min: 0,
-            max: 100,
-
-            title: {
-              display: true,
-              text: "ปริมาณน้ำ (%)"
-            }
-          },
-
-          x: {
-            ticks: {
-              autoSkip: true,
-              maxTicksLimit: period === "daily" ? 6 : 7,
-              maxRotation: 0
-            },
-
-            title: {
-              display: true,
-              text: period === "daily" ? "เวลา" : "วันที่"
-            }
-          }
-        }
-      }
-    });
-
-    // =================================
-    // DAILY SUMMARY
-    // =================================
-
-    const latest = chartData[chartData.length - 1];
-
-    const percent = Number(latest.water_percent);
-
-    dailyWater.textContent =
-      percent.toFixed(1) + "%";
-
-    if (percent <= 10) {
-      dailyStatus.textContent = "วิกฤต";
-
-    } else if (percent <= 40) {
-      dailyStatus.textContent = "ใกล้หมด";
-
-    } else {
-      dailyStatus.textContent = "ปกติ";
-    }
+    const totalPoints = chartResult.chartDatasets.reduce(
+      (sum, dataset) =>
+        sum + dataset.data.filter(value => value !== null).length,
+      0
+    );
 
     chartMessage.textContent =
-      `แสดงข้อมูล ${chartData.length} ${
-        period === "daily" ? "รายการ" : "วัน"
-      }`;
+      `แสดงข้อมูล ${totalPoints} รายการ`;
 
   } catch (error) {
     console.error("โหลดกราฟผิดพลาด:", error);
 
     chartMessage.textContent =
-      "ไม่สามารถโหลดข้อมูลกราฟได้";
+      "ไม่สามารถโหลดข้อมูลกราฟได้: " + error.message;
+
+    if (waterChart) {
+      waterChart.destroy();
+      waterChart = null;
+    }
   }
 }
 
 
-// =================================
-// HISTORY EVENTS
-// =================================
+// =============================================
+// 19. HISTORY: EVENT LISTENERS
+// =============================================
 
-// โหลดกราฟเมื่อเปลี่ยนเครื่อง
-document.getElementById("deviceFilter")
+getElement("deviceFilter")
   .addEventListener("change", loadHistoryData);
 
-// โหลดกราฟเมื่อเปลี่ยนวันที่
-document.getElementById("dateFilter")
+getElement("periodFilter")
   .addEventListener("change", loadHistoryData);
 
-// โหลดกราฟเมื่อเปลี่ยนรูปแบบ
-document.getElementById("periodFilter")
+getElement("dateFilter")
   .addEventListener("change", loadHistoryData);
 
 
-// =================================
-// SETTINGS: LOAD CONFIGURATION
-// =================================
+// =============================================
+// 20. SETTINGS: SELECT DEVICE
+// =============================================
+
+getElement("settingsDeviceFilter")
+  .addEventListener("change", async event => {
+
+    selectedSettingsDevice = event.target.value;
+
+    await loadSettings();
+  });
+
+
+// =============================================
+// 21. SETTINGS: LOAD SETTINGS
+// =============================================
 
 async function loadSettings() {
-  const thresholdInput =
-    document.getElementById("thresholdInput");
+  const deviceId = selectedSettingsDevice;
 
-  const lineGroupInput =
-    document.getElementById("lineGroupInput");
+  const device = getDevice(deviceId);
 
-  const settingsMessage =
-    document.getElementById("settingsMessage");
+  if (!device) return;
+
+  setText("currentStaff", "กำลังโหลด...");
+
+  const message = getElement("settingsMessage");
+
+  if (message) {
+    message.textContent = "กำลังโหลดการตั้งค่า...";
+    message.style.color = "";
+  }
 
   try {
-    const url =
-      `${API_URL}?action=settings&device_id=${DEVICE_ID}`;
-
-    const response = await fetch(url, {
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      throw new Error("ไม่สามารถเชื่อมต่อ API ได้");
-    }
-
-    const result = await response.json();
+    const result = await getAPI(
+      "settings",
+      deviceId
+    );
 
     if (!result.success || !result.data) {
       throw new Error(
-        result.message || "ไม่พบการตั้งค่า"
+        result.message || "ไม่พบการตั้งค่าของเครื่องนี้"
       );
     }
 
-    thresholdInput.value =
+    settingsData[deviceId] = result.data;
+
+    getElement("thresholdInput").value =
       result.data.threshold_percent;
 
-    lineGroupInput.value =
+    getElement("lineGroupInput").value =
       result.data.line_group_id || "";
 
-    settingsMessage.textContent =
-      "โหลดการตั้งค่าสำเร็จ";
+    await loadStaffSchedule(deviceId);
 
-    settingsMessage.style.color = "green";
+    // แสดงตารางเวร หากเคยเปิดแผงไว้
+    if (isScheduleOpen) {
+      renderSchedule(deviceId);
+    }
 
-    console.log("โหลดการตั้งค่าสำเร็จ:", result.data);
+    if (message) {
+      message.textContent =
+        "โหลดการตั้งค่าและตารางเวรสำเร็จ";
+
+      message.style.color = "green";
+    }
 
   } catch (error) {
     console.error("โหลดการตั้งค่าผิดพลาด:", error);
 
-    settingsMessage.textContent =
-      "ไม่สามารถโหลดการตั้งค่าได้";
+    if (message) {
+      message.textContent =
+        "โหลดข้อมูลไม่สำเร็จ: " + error.message;
 
-    settingsMessage.style.color = "red";
+      message.style.color = "red";
+    }
+
+    setText("currentStaff", "โหลดข้อมูลไม่สำเร็จ");
+
+    const rows = getElement("scheduleRows");
+
+    if (rows) {
+      rows.textContent =
+        "ไม่สามารถโหลดตารางเวรได้";
+    }
   }
 }
 
 
-// =================================
-// SETTINGS: SAVE CONFIGURATION
-// =================================
+// =============================================
+// 22. SETTINGS: RENDER WEEKLY SCHEDULE
+// =============================================
+
+function renderSchedule(deviceId) {
+  const container = getElement("scheduleRows");
+
+  if (!container) return;
+
+  const schedule = scheduleData[deviceId];
+
+  if (!schedule) {
+    container.textContent =
+      "ยังไม่มีข้อมูลตารางเวร";
+
+    return;
+  }
+
+  container.innerHTML = "";
+
+  const staffList = schedule.staffList || [];
+  const assignments = schedule.data || [];
+
+  DAY_NAMES.forEach((dayName, index) => {
+    const assignment = assignments.find(item =>
+      item.day_of_week === dayName
+    );
+
+    const selectedStaffId =
+      assignment?.staff_id || "";
+
+    const row = document.createElement("div");
+
+    row.className = "schedule-row";
+
+    const label = document.createElement("label");
+
+    label.textContent = DAY_LABELS[index];
+
+    label.htmlFor = `schedule_${deviceId}_${dayName}`;
+
+    const select = document.createElement("select");
+
+    select.id = `schedule_${deviceId}_${dayName}`;
+    select.dataset.day = dayName;
+
+    const placeholder = document.createElement("option");
+
+    placeholder.value = "";
+    placeholder.textContent = "เลือกเจ้าหน้าที่";
+
+    select.appendChild(placeholder);
+
+    staffList.forEach(staff => {
+      const option = document.createElement("option");
+
+      option.value = staff.staff_id;
+      option.textContent = staff.staff_name;
+
+      if (staff.staff_id === selectedStaffId) {
+        option.selected = true;
+      }
+
+      select.appendChild(option);
+    });
+
+    row.appendChild(label);
+    row.appendChild(select);
+
+    container.appendChild(row);
+  });
+}
+
+
+// =============================================
+// 23. SETTINGS: COLLAPSE SCHEDULE
+// =============================================
+
+function toggleSchedule() {
+  isScheduleOpen = !isScheduleOpen;
+
+  const panel = getElement("schedulePanel");
+  const toggle = getElement("scheduleToggle");
+  const arrow = getElement("scheduleArrow");
+
+  if (!panel || !toggle) return;
+
+  panel.hidden = !isScheduleOpen;
+
+  toggle.setAttribute(
+    "aria-expanded",
+    String(isScheduleOpen)
+  );
+
+  if (arrow) {
+    arrow.textContent = isScheduleOpen ? "⌃" : "⌄";
+  }
+
+  if (isScheduleOpen) {
+    renderSchedule(selectedSettingsDevice);
+  }
+}
+
+
+getElement("scheduleToggle")
+  .addEventListener("click", toggleSchedule);
+
+
+// =============================================
+// 24. SETTINGS: SAVE SETTINGS
+// =============================================
 
 async function saveSettings() {
-  const thresholdInput =
-    document.getElementById("thresholdInput");
+  const deviceId = selectedSettingsDevice;
 
-  const lineGroupInput =
-    document.getElementById("lineGroupInput");
+  const thresholdInput = getElement("thresholdInput");
+  const lineGroupInput = getElement("lineGroupInput");
 
-  const settingsMessage =
-    document.getElementById("settingsMessage");
-
-  const saveButton =
-    document.getElementById("saveSettingsBtn");
+  const message = getElement("settingsMessage");
+  const saveButton = getElement("saveSettingsBtn");
 
   const threshold = Number(thresholdInput.value);
 
-  const lineGroupId =
-    lineGroupInput.value.trim();
+  const lineGroupId = lineGroupInput.value.trim();
 
-  // ตรวจสอบค่าเกณฑ์แจ้งเตือน
+  // ตรวจสอบเกณฑ์แจ้งเตือน
   if (
     thresholdInput.value.trim() === "" ||
     !Number.isFinite(threshold) ||
     threshold < 0 ||
     threshold > 100
   ) {
-    settingsMessage.textContent =
+    message.textContent =
       "กรุณากำหนดเกณฑ์แจ้งเตือนระหว่าง 0–100%";
 
-    settingsMessage.style.color = "red";
+    message.style.color = "red";
 
     return;
+  }
+
+  // ตรวจสอบตารางเวร
+  const schedule = [];
+
+  for (const dayName of DAY_NAMES) {
+    const select = getElement(
+      `schedule_${deviceId}_${dayName}`
+    );
+
+    if (!select) continue;
+
+    if (!select.value) {
+      message.textContent =
+        `กรุณาเลือกเจ้าหน้าที่สำหรับ${DAY_LABELS[DAY_NAMES.indexOf(dayName)]}`;
+
+      message.style.color = "red";
+
+      if (isScheduleOpen) {
+        select.focus();
+      }
+
+      return;
+    }
+
+    schedule.push({
+      day_of_week: dayName,
+      staff_id: select.value
+    });
   }
 
   try {
     saveButton.disabled = true;
 
-    settingsMessage.textContent =
-      "กำลังบันทึก...";
+    message.textContent =
+      "กำลังบันทึกการตั้งค่า...";
 
-    settingsMessage.style.color = "";
+    message.style.color = "";
 
-    const response = await fetch(API_URL, {
+    // -----------------------------------------
+    // บันทึกเกณฑ์แจ้งเตือน
+    // -----------------------------------------
+
+    const settingsResponse = await fetch(API_URL, {
       method: "POST",
 
       headers: {
@@ -708,38 +1398,89 @@ async function saveSettings() {
 
       body: JSON.stringify({
         action: "save_settings",
-        device_id: DEVICE_ID,
+        device_id: deviceId,
         threshold_percent: threshold,
         line_group_id: lineGroupId
       })
     });
 
-    if (!response.ok) {
-      throw new Error("ไม่สามารถเชื่อมต่อ API ได้");
-    }
-
-    const result = await response.json();
-
-    if (!result.success) {
+    if (!settingsResponse.ok) {
       throw new Error(
-        result.message || "บันทึกไม่สำเร็จ"
+        "ไม่สามารถเชื่อมต่อ API เพื่อบันทึกการตั้งค่าได้"
       );
     }
 
-    settingsMessage.textContent =
-      "บันทึกการตั้งค่าสำเร็จ";
+    const settingsResult =
+      await settingsResponse.json();
 
-    settingsMessage.style.color = "green";
+    if (!settingsResult.success) {
+      throw new Error(
+        settingsResult.message || "บันทึกการตั้งค่าไม่สำเร็จ"
+      );
+    }
 
-    console.log("บันทึกการตั้งค่าสำเร็จ:", result);
+    // -----------------------------------------
+    // บันทึกตารางเวรทั้ง 7 วัน
+    // -----------------------------------------
+
+    for (const item of schedule) {
+      const scheduleResponse = await fetch(API_URL, {
+        method: "POST",
+
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+
+        body: JSON.stringify({
+          action: "save_staff_assignment",
+          device_id: deviceId,
+          day_of_week: item.day_of_week,
+          staff_id: item.staff_id
+        })
+      });
+
+      if (!scheduleResponse.ok) {
+        throw new Error(
+          `เชื่อมต่อ API เพื่อบันทึกเวร${item.day_of_week}ไม่สำเร็จ`
+        );
+      }
+
+      const scheduleResult =
+        await scheduleResponse.json();
+
+      if (!scheduleResult.success) {
+        throw new Error(
+          scheduleResult.message ||
+          `บันทึกเวร${item.day_of_week}ไม่สำเร็จ`
+        );
+      }
+    }
+
+    // -----------------------------------------
+    // โหลดข้อมูลใหม่หลังบันทึก
+    // -----------------------------------------
+
+    await loadStaffSchedule(deviceId);
+
+    renderSchedule(deviceId);
+
+    message.textContent =
+      "บันทึกการตั้งค่าและตารางเวรสำเร็จ";
+
+    message.style.color = "green";
+
+    console.log(
+      "บันทึกการตั้งค่าสำเร็จ:",
+      deviceId
+    );
 
   } catch (error) {
     console.error("บันทึกการตั้งค่าผิดพลาด:", error);
 
-    settingsMessage.textContent =
+    message.textContent =
       "บันทึกไม่สำเร็จ: " + error.message;
 
-    settingsMessage.style.color = "red";
+    message.style.color = "red";
 
   } finally {
     saveButton.disabled = false;
@@ -747,13 +1488,55 @@ async function saveSettings() {
 }
 
 
-// =================================
-// SETTINGS EVENTS
-// =================================
-
-// โหลดการตั้งค่าเมื่อเปิดเว็บไซต์ครั้งแรก
-loadSettings();
-
-// บันทึกการตั้งค่าเมื่อกดปุ่ม
-document.getElementById("saveSettingsBtn")
+getElement("saveSettingsBtn")
   .addEventListener("click", saveSettings);
+
+
+// =============================================
+// 25. INITIALIZE APPLICATION
+// =============================================
+
+async function initializeApp() {
+  // ตั้งค่าเครื่องเริ่มต้น
+  selectHomeDevice("device_02");
+
+  getElement("settingsDeviceFilter").value =
+    "device_02";
+
+  selectedSettingsDevice = "device_02";
+
+  // กำหนดวันที่เริ่มต้นของกราฟ
+  getElement("dateFilter").value =
+    getTodayDate();
+
+  // เปิดหน้าแรก
+  showPage("homePage");
+
+  // โหลดข้อมูลทั้งสองเครื่อง
+  await Promise.all([
+    loadAllLatestData(),
+    loadAllStaff()
+  ]);
+
+  console.log("Water Dispenser Dashboard พร้อมทำงาน");
+}
+
+
+// เริ่มต้นระบบ
+initializeApp();
+
+
+// =============================================
+// 26. AUTO REFRESH
+// =============================================
+
+// อัปเดตระดับน้ำทุก 10 วินาที
+setInterval(() => {
+  loadAllLatestData();
+}, REFRESH_INTERVAL);
+
+
+// อัปเดตผู้รับผิดชอบทุก 60 วินาที
+setInterval(() => {
+  loadAllStaff();
+}, 60000);
