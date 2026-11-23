@@ -41,7 +41,6 @@ const DAY_LABELS = [
 ];
 
 const REFRESH_INTERVAL = 10000;
-const HISTORY_GAP_THRESHOLD_MS = 90 * 60 * 1000;
 
 
 // =============================================
@@ -793,9 +792,11 @@ function buildHistoryDatasets(deviceHistories, selectedDate, period) {
     }
 
     data.forEach(point => {
-      if (period !== "daily") {
-        allLabels.add(point.date);
-      }
+      allLabels.add(
+        period === "daily"
+          ? String(point.created_at)
+          : point.date
+      );
     });
 
     datasets.push({
@@ -807,61 +808,22 @@ function buildHistoryDatasets(deviceHistories, selectedDate, period) {
   });
 
   const labels = Array.from(allLabels).sort((a, b) => {
+    if (period === "daily") {
+      return Number(a) - Number(b);
+    }
+
     return a.localeCompare(b);
   });
 
   const chartDatasets = datasets.map(dataset => {
-    if (period === "daily") {
-      const pointsByTimestamp = new Map();
-
-      dataset.data.forEach(point => {
-        pointsByTimestamp.set(
-          Number(point.created_at) * 1000,
-          Number(point.water_percent)
-        );
-      });
-
-      const points = Array.from(
-        pointsByTimestamp,
-        ([x, y]) => ({ x, y })
-      ).sort((a, b) => a.x - b.x);
-
-      const data = [];
-
-      points.forEach((point, index) => {
-        const previousPoint = points[index - 1];
-
-        if (
-          previousPoint &&
-          point.x - previousPoint.x > HISTORY_GAP_THRESHOLD_MS
-        ) {
-          data.push({
-            x: (previousPoint.x + point.x) / 2,
-            y: null
-          });
-        }
-
-        data.push(point);
-      });
-
-      return {
-        label: dataset.label,
-        data,
-        borderColor: dataset.color,
-        backgroundColor: dataset.color,
-        borderWidth: 2,
-        tension: 0.3,
-        spanGaps: false,
-        fill: false,
-        pointRadius: 3,
-        pointHoverRadius: 6
-      };
-    }
-
     const dataMap = new Map();
 
     dataset.data.forEach(point => {
-      dataMap.set(point.date, Number(point.water_percent));
+      const key = period === "daily"
+        ? String(point.created_at)
+        : point.date;
+
+      dataMap.set(key, Number(point.water_percent));
     });
 
     return {
@@ -914,19 +876,29 @@ function displayHistoryChart(
     waterChart = null;
   }
 
+  const displayLabels = labels.map(label => {
+    if (period === "daily") {
+      return new Date(Number(label) * 1000)
+        .toLocaleTimeString("th-TH", {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+    }
+
+    return new Date(`${label}T00:00:00`)
+      .toLocaleDateString("th-TH", {
+        day: "numeric",
+        month: "short"
+      });
+  });
+
   const rawLabels = labels.slice();
 
   waterChart = new Chart(canvas, {
     type: "line",
 
     data: {
-      labels: period === "daily" ? undefined : labels.map(label =>
-        new Date(`${label}T00:00:00`)
-          .toLocaleDateString("th-TH", {
-            day: "numeric",
-            month: "short"
-          })
-      ),
+      labels: displayLabels,
       datasets
     },
 
@@ -952,15 +924,16 @@ function displayHistoryChart(
             title(items) {
               if (!items.length) return "";
 
+              const index = items[0].dataIndex;
+              const rawLabel = rawLabels[index];
+
               if (period === "daily") {
-                return new Date(items[0].parsed.x)
+                return new Date(Number(rawLabel) * 1000)
                   .toLocaleString("th-TH", {
                     dateStyle: "medium",
                     timeStyle: "medium"
                   });
               }
-
-              const rawLabel = rawLabels[items[0].dataIndex];
 
               return new Date(`${rawLabel}T00:00:00`)
                 .toLocaleDateString("th-TH", {
@@ -994,26 +967,11 @@ function displayHistoryChart(
         },
 
         x: {
-          type: period === "daily" ? "linear" : "category",
-
-          ticks: period === "daily"
-            ? {
-                autoSkip: true,
-                maxTicksLimit: 6,
-                maxRotation: 0,
-                callback(value) {
-                  return new Date(Number(value))
-                    .toLocaleTimeString("th-TH", {
-                      hour: "2-digit",
-                      minute: "2-digit"
-                    });
-                }
-              }
-            : {
-                autoSkip: true,
-                maxTicksLimit: 7,
-                maxRotation: 0
-              },
+          ticks: {
+            autoSkip: true,
+            maxTicksLimit: period === "daily" ? 6 : 7,
+            maxRotation: 0
+          },
 
           title: {
             display: true,
