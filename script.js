@@ -1927,6 +1927,29 @@ async function initializeApp() {
 
     } catch (error) {
       console.error("สร้าง Permanent Link ไม่สำเร็จ:", error);
+
+      const errorPanel = document.createElement("div");
+
+      errorPanel.style.cssText = `
+        position: fixed;
+        bottom: 12px;
+        left: 12px;
+        right: 12px;
+        z-index: 999999;
+        background: #fff0f0;
+        color: #a00000;
+        padding: 16px;
+        border: 1px solid #dd7777;
+       border-radius: 12px;
+       font-size: 14px;
+       overflow-wrap: anywhere;
+      `;
+
+      errorPanel.textContent =
+        "สร้าง MINI App Link ไม่สำเร็จ: " +
+        (error.message || String(error));
+
+      document.body.appendChild(errorPanel);
     }
 
 
