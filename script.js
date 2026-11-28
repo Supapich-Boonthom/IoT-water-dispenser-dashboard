@@ -1784,6 +1784,7 @@ getElement("saveSettingsBtn")
 const LIFF_ID = "2012846813-iQcPzZ7C";
 
 // อ่านหน้าที่ต้องการเปิดจาก URL หรือ LIFF state
+
 function getInitialPage() {
   const pageMap = {
     home: "homePage",
@@ -1793,19 +1794,21 @@ function getInitialPage() {
 
   const params = new URLSearchParams(window.location.search);
 
-  // กรณีเปิดผ่าน GitHub Pages โดยตรง
+  // กรณีมี page อยู่ใน URL โดยตรง
   let requestedPage = params.get("page");
 
-  // กรณีเปิดผ่าน LINE MINI App
+  // กรณี LINE ส่งข้อมูลหน้าผ่าน liff.state
   if (!requestedPage) {
     const liffState = params.get("liff.state");
 
     if (liffState) {
-      const stateParams = new URLSearchParams(
-        liffState.startsWith("?")
-          ? liffState.substring(1)
-          : liffState
-      );
+      const queryIndex = liffState.indexOf("?");
+
+      const stateQuery = queryIndex >= 0
+        ? liffState.substring(queryIndex + 1)
+        : liffState.replace(/^\?/, "");
+
+      const stateParams = new URLSearchParams(stateQuery);
 
       requestedPage = stateParams.get("page");
     }
@@ -1814,7 +1817,8 @@ function getInitialPage() {
   return pageMap[requestedPage] || "homePage";
 }
 
-  
+
+
 // =============================================
 // 25. INITIALIZE APPLICATION
 // =============================================
@@ -1837,6 +1841,7 @@ async function initializeApp() {
     });
 
 
+
     // สร้าง Permanent Link สำหรับแต่ละหน้า
     const endpointURL =
       "https://supapich-boonthom.github.io/IoT-water-dispenser-dashboard/";
@@ -1855,15 +1860,75 @@ async function initializeApp() {
           await liff.permanentLink.createUrlBy(url);
       }
 
-      console.log("===== MINI APP PERMANENT LINKS =====");
-      console.table(permanentLinks);
+      console.log("MINI APP PERMANENT LINKS:", permanentLinks);
+
+      // แสดงลิงก์บนหน้าจอ เพื่อคัดลอกไปใส่ Rich Menu
+      let linkPanel = getElement("miniAppLinksPanel");
+
+      if (!linkPanel) {
+        linkPanel = document.createElement("div");
+        linkPanel.id = "miniAppLinksPanel";
+
+        Object.assign(linkPanel.style, {
+          position: "fixed",
+          bottom: "12px",
+          left: "12px",
+          right: "12px",
+          zIndex: "99999",
+          background: "#ffffff",
+          color: "#222222",
+          border: "1px solid #cccccc",
+          borderRadius: "12px",
+          padding: "14px",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
+          fontSize: "13px",
+          overflowWrap: "anywhere",
+          maxHeight: "45vh",
+          overflowY: "auto"
+        });
+
+        document.body.appendChild(linkPanel);
+      }
+
+      linkPanel.innerHTML = "";
+
+      const heading = document.createElement("strong");
+      heading.textContent = "ลิงก์ LINE MINI App สำหรับ Rich Menu";
+      linkPanel.appendChild(heading);
+
+      const closeButton = document.createElement("button");
+      closeButton.textContent = "ปิด";
+      closeButton.style.marginLeft = "12px";
+      closeButton.addEventListener("click", () => {
+        linkPanel.remove();
+      });
+      linkPanel.appendChild(closeButton);
+
+      const labels = {
+        home: "A — หน้าแรก",
+        history: "B — กราฟย้อนหลัง",
+        settings: "C — ตั้งค่าและแจ้งเตือน"
+      };
+
+      for (const page of ["home", "history", "settings"]) {
+        const row = document.createElement("p");
+        const label = document.createElement("strong");
+        label.textContent = labels[page];
+
+        const link = document.createElement("div");
+        link.textContent = permanentLinks[page];
+        link.style.userSelect = "text";
+        link.style.marginTop = "4px";
+
+        row.append(label, link);
+        linkPanel.appendChild(row);
+      }
+
 
     } catch (error) {
-      console.error(
-        "สร้าง Permanent Link ไม่สำเร็จ:",
-        error
-      );
+      console.error("สร้าง Permanent Link ไม่สำเร็จ:", error);
     }
+
 
 
     // เลือกหน้าเริ่มต้น
