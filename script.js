@@ -1836,6 +1836,36 @@ async function initializeApp() {
       liffId: LIFF_ID
     });
 
+
+    // สร้าง Permanent Link สำหรับแต่ละหน้า
+    const endpointURL =
+      "https://supapich-boonthom.github.io/IoT-water-dispenser-dashboard/";
+
+    try {
+      const pageLinks = {
+        home: endpointURL,
+        history: endpointURL + "?page=history",
+        settings: endpointURL + "?page=settings"
+      };
+
+      const permanentLinks = {};
+
+      for (const [page, url] of Object.entries(pageLinks)) {
+        permanentLinks[page] =
+          await liff.permanentLink.createUrlBy(url);
+      }
+
+      console.log("===== MINI APP PERMANENT LINKS =====");
+      console.table(permanentLinks);
+
+    } catch (error) {
+      console.error(
+        "สร้าง Permanent Link ไม่สำเร็จ:",
+        error
+      );
+    }
+
+
     // เลือกหน้าเริ่มต้น
     const initialPage = getInitialPage();
     showPage(initialPage);
