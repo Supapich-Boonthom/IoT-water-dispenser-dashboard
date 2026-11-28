@@ -175,6 +175,92 @@ function getTodayDate() {
 }
 
 
+function getCurrentMonth() {
+  const date = new Date();
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0")
+  ].join("-");
+}
+
+
+// =============================================
+// MONTHLY BOTTLE CHANGE SUMMARY
+// =============================================
+
+async function loadBottleChangeSummary() {
+  const monthInput = getElement("bottleMonthFilter");
+  const deviceFilter = getElement("deviceFilter");
+
+  if (!monthInput || !deviceFilter) return;
+
+  if (!monthInput.value) {
+    monthInput.value = getCurrentMonth();
+  }
+
+  const month = monthInput.value;
+  const deviceId = deviceFilter.value;
+
+  setText("bottleChangeTotal", "กำลังโหลด...");
+  setText("bottleChangeDevice02", "-");
+  setText("bottleChangeDevice01", "-");
+  setText("bottleChangeMessage", "กำลังโหลดข้อมูล...");
+
+  try {
+    const result = await getAPI(
+      "bottle_changes",
+      deviceId,
+      { month }
+    );
+
+    if (!result.success) {
+      throw new Error(
+        result.message || "ไม่สามารถอ่านประวัติได้"
+      );
+    }
+
+    const byDevice = result.by_device || {};
+
+    setText(
+      "bottleChangeTotal",
+      `${Number(result.count || 0)} ครั้ง`
+    );
+
+    setText(
+      "bottleChangeDevice02",
+      `${Number(byDevice.device_02 || 0)} ครั้ง`
+    );
+
+    setText(
+      "bottleChangeDevice01",
+      `${Number(byDevice.device_01 || 0)} ครั้ง`
+    );
+
+    setText(
+      "bottleChangeMessage",
+      `ข้อมูลประจำเดือน ${month}`
+    );
+
+  } catch (error) {
+    console.error(
+      "โหลดสรุปการเปลี่ยนถังผิดพลาด:",
+      error
+    );
+
+    setText("bottleChangeTotal", "-");
+    setText("bottleChangeDevice02", "-");
+    setText("bottleChangeDevice01", "-");
+
+    setText(
+      "bottleChangeMessage",
+      "โหลดข้อมูลไม่สำเร็จ: " + error.message
+    );
+  }
+}
+
+
+
 function getTodayDayName() {
   return DAY_NAMES[new Date().getDay()];
 }
@@ -1006,6 +1092,7 @@ async function loadHistoryData() {
   }
 
   const deviceId = deviceFilter.value;
+  loadBottleChangeSummary();
   const period = periodFilter.value;
 
   if (period === "daily") {
@@ -1118,6 +1205,8 @@ getElement("periodFilter")
 getElement("dateFilter")
   .addEventListener("change", loadHistoryData);
 
+getElement("bottleMonthFilter")
+  .addEventListener("change", loadBottleChangeSummary);
 
 // =============================================
 // 20. SETTINGS: SELECT DEVICE
@@ -1130,6 +1219,233 @@ getElement("settingsDeviceFilter")
 
     await loadSettings();
   });
+
+
+// =============================================
+// ALERT RULES: LOAD / RENDER / CRUD
+// =============================================
+
+let alertRulesData = [];
+
+async function loadAlertRules(deviceId) {
+  const container = getElement("alertRulesList");
+  if (!container) return;
+
+  container.textContent = "กำลังโหลดเกณฑ์แจ้งเตือน...";
+
+  try {
+    const result = await getAPI("alert_rules", deviceId);
+
+    if (!result.success) {
+      throw new Error(result.message || "โหลดเกณฑ์ไม่สำเร็จ");
+    }
+
+    alertRulesData = result.data || [];
+    renderAlertRules();
+
+  } catch (error) {
+    console.error("โหลดเกณฑ์แจ้งเตือนผิดพลาด:", error);
+    container.textContent = "โหลดเกณฑ์แจ้งเตือนไม่สำเร็จ: " + error.message;
+  }
+}
+
+
+function renderAlertRules() {
+  const container = getElement("alertRulesList");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  const rules = [...alertRulesData].sort(
+    (a, b) => b.threshold_percent - a.threshold_percent
+  );
+
+  if (rules.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = "ยังไม่มีเกณฑ์แจ้งเตือน กรุณาเพิ่มเกณฑ์";
+    container.appendChild(empty);
+    return;
+  }
+
+  rules.forEach(rule => {
+    const card = document.createElement("div");
+    card.className = "alert-rule-item";
+
+    const info = document.createElement("div");
+    info.className = "alert-rule-info";
+
+    const title = document.createElement("strong");
+    title.textContent = `ระดับน้ำ ${rule.threshold_percent}%`;
+
+    const detail = document.createElement("small");
+    detail.textContent =
+      `แจ้งเตือนเมื่อระดับน้ำ ≤ ${rule.threshold_percent}%`;
+
+    const status = document.createElement("small");
+    status.textContent = rule.is_enabled ? "เปิดใช้งาน" : "ปิดใช้งาน";
+    status.className = rule.is_enabled
+      ? "alert-rule-enabled"
+      : "alert-rule-disabled";
+
+    info.append(title, detail, status);
+
+    const actions = document.createElement("div");
+    actions.className = "alert-rule-actions";
+
+
+
+    const toggleButton = document.createElement("button");
+    toggleButton.type = "button";
+    toggleButton.textContent = rule.is_enabled ? "ปิด" : "เปิด";
+    toggleButton.addEventListener("click", () => toggleAlertRule(rule));
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "ลบ";
+    deleteButton.addEventListener("click", () => deleteAlertRule(rule));
+
+    actions.append(toggleButton, deleteButton);
+    card.append(info, actions);
+    container.appendChild(card);
+  });
+}
+
+
+async function postAlertRule(payload) {
+  const response = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    throw new Error("เชื่อมต่อ API ไม่สำเร็จ");
+  }
+
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(result.message || "บันทึกเกณฑ์ไม่สำเร็จ");
+  }
+
+  return result;
+}
+
+
+async function addAlertRule() {
+  const input = prompt("ระบุระดับน้ำที่ต้องการแจ้งเตือน (0–100%)");
+
+  if (input === null) return;
+
+  const threshold = Number(input.trim());
+
+  if (
+    input.trim() === "" ||
+    !Number.isFinite(threshold) ||
+    threshold < 0 ||
+    threshold > 100
+  ) {
+    alert("กรุณาระบุเปอร์เซ็นต์ระหว่าง 0–100");
+    return;
+  }
+
+  try {
+    await postAlertRule({
+      action: "add_alert_rule",
+      device_id: selectedSettingsDevice,
+      threshold_percent: threshold,
+      alert_type: "water_level",
+      is_enabled: true
+    });
+
+    await loadAlertRules(selectedSettingsDevice);
+    alert("เพิ่มเกณฑ์แจ้งเตือนเรียบร้อย");
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+
+async function editAlertRule(rule) {
+  const input = prompt(
+    "แก้ไขระดับน้ำที่ต้องการแจ้งเตือน (0–100%)",
+    rule.threshold_percent
+  );
+
+  if (input === null) return;
+
+  const threshold = Number(input.trim());
+
+  if (
+    input.trim() === "" ||
+    !Number.isFinite(threshold) ||
+    threshold < 0 ||
+    threshold > 100
+  ) {
+    alert("กรุณาระบุเปอร์เซ็นต์ระหว่าง 0–100");
+    return;
+  }
+
+  try {
+    await postAlertRule({
+      action: "update_alert_rule",
+      rule_id: rule.rule_id,
+      threshold_percent: threshold
+    });
+
+    await loadAlertRules(selectedSettingsDevice);
+    alert("แก้ไขเกณฑ์เรียบร้อย");
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+
+async function toggleAlertRule(rule) {
+  try {
+    await postAlertRule({
+      action: "update_alert_rule",
+      rule_id: rule.rule_id,
+      is_enabled: !rule.is_enabled
+    });
+
+    await loadAlertRules(selectedSettingsDevice);
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+
+async function deleteAlertRule(rule) {
+  const confirmed = confirm(
+    `ต้องการลบเกณฑ์แจ้งเตือน ${rule.threshold_percent}% ใช่หรือไม่?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    await postAlertRule({
+      action: "delete_alert_rule",
+      rule_id: rule.rule_id
+    });
+
+    await loadAlertRules(selectedSettingsDevice);
+    alert("ลบเกณฑ์เรียบร้อย");
+
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+
+// ปุ่มเพิ่มเกณฑ์
+getElement("addAlertRuleBtn")
+  .addEventListener("click", addAlertRule);
 
 
 // =============================================
@@ -1166,8 +1482,7 @@ async function loadSettings() {
 
     settingsData[deviceId] = result.data;
 
-    getElement("thresholdInput").value =
-      result.data.threshold_percent;
+    await loadAlertRules(deviceId);
 
     getElement("lineGroupInput").value =
       result.data.line_group_id || "";
@@ -1320,31 +1635,30 @@ getElement("scheduleToggle")
 // 24. SETTINGS: SAVE SETTINGS
 // =============================================
 
+
 async function saveSettings() {
   const deviceId = selectedSettingsDevice;
 
-  const thresholdInput = getElement("thresholdInput");
   const lineGroupInput = getElement("lineGroupInput");
-
   const message = getElement("settingsMessage");
   const saveButton = getElement("saveSettingsBtn");
 
-  const threshold = Number(thresholdInput.value);
-
   const lineGroupId = lineGroupInput.value.trim();
 
-  // ตรวจสอบเกณฑ์แจ้งเตือน
+  // ค่าเกณฑ์เดิมเก็บไว้เพื่อให้ API ตั้งค่าเดิมทำงานต่อได้
+  const legacyThreshold = Number(
+    settingsData[deviceId]?.threshold_percent
+  );
+
   if (
-    thresholdInput.value.trim() === "" ||
-    !Number.isFinite(threshold) ||
-    threshold < 0 ||
-    threshold > 100
+    !Number.isFinite(legacyThreshold) ||
+    legacyThreshold < 0 ||
+    legacyThreshold > 100
   ) {
     message.textContent =
-      "กรุณากำหนดเกณฑ์แจ้งเตือนระหว่าง 0–100%";
+      "ไม่พบค่าเกณฑ์ตั้งค่าเดิม กรุณาโหลดการตั้งค่าใหม่";
 
     message.style.color = "red";
-
     return;
   }
 
@@ -1380,57 +1694,42 @@ async function saveSettings() {
   try {
     saveButton.disabled = true;
 
-    message.textContent =
-      "กำลังบันทึกการตั้งค่า...";
-
+    message.textContent = "กำลังบันทึกการตั้งค่า...";
     message.style.color = "";
 
-    // -----------------------------------------
-    // บันทึกเกณฑ์แจ้งเตือน
-    // -----------------------------------------
-
+    // บันทึก LINE Group ID
     const settingsResponse = await fetch(API_URL, {
       method: "POST",
-
       headers: {
         "Content-Type": "text/plain;charset=utf-8"
       },
-
       body: JSON.stringify({
         action: "save_settings",
         device_id: deviceId,
-        threshold_percent: threshold,
+        threshold_percent: legacyThreshold,
         line_group_id: lineGroupId
       })
     });
 
     if (!settingsResponse.ok) {
-      throw new Error(
-        "ไม่สามารถเชื่อมต่อ API เพื่อบันทึกการตั้งค่าได้"
-      );
+      throw new Error("เชื่อมต่อ API เพื่อบันทึกการตั้งค่าไม่สำเร็จ");
     }
 
-    const settingsResult =
-      await settingsResponse.json();
+    const settingsResult = await settingsResponse.json();
 
     if (!settingsResult.success) {
       throw new Error(
-        settingsResult.message || "บันทึกการตั้งค่าไม่สำเร็จ"
+        settingsResult.message || "บันทึก LINE Group ID ไม่สำเร็จ"
       );
     }
 
-    // -----------------------------------------
     // บันทึกตารางเวรทั้ง 7 วัน
-    // -----------------------------------------
-
     for (const item of schedule) {
       const scheduleResponse = await fetch(API_URL, {
         method: "POST",
-
         headers: {
           "Content-Type": "text/plain;charset=utf-8"
         },
-
         body: JSON.stringify({
           action: "save_staff_assignment",
           device_id: deviceId,
@@ -1445,8 +1744,7 @@ async function saveSettings() {
         );
       }
 
-      const scheduleResult =
-        await scheduleResponse.json();
+      const scheduleResult = await scheduleResponse.json();
 
       if (!scheduleResult.success) {
         throw new Error(
@@ -1456,23 +1754,13 @@ async function saveSettings() {
       }
     }
 
-    // -----------------------------------------
     // โหลดข้อมูลใหม่หลังบันทึก
-    // -----------------------------------------
-
-    await loadStaffSchedule(deviceId);
-
-    renderSchedule(deviceId);
+    await loadSettings();
 
     message.textContent =
       "บันทึกการตั้งค่าและตารางเวรสำเร็จ";
 
     message.style.color = "green";
-
-    console.log(
-      "บันทึกการตั้งค่าสำเร็จ:",
-      deviceId
-    );
 
   } catch (error) {
     console.error("บันทึกการตั้งค่าผิดพลาด:", error);
@@ -1486,6 +1774,7 @@ async function saveSettings() {
     saveButton.disabled = false;
   }
 }
+
 
 
 getElement("saveSettingsBtn")

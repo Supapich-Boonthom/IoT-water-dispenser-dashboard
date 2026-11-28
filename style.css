@@ -1391,3 +1391,245 @@ input:focus-visible {
   }
 
 }
+
+
+/* =============================================
+   ALERT RULE MANAGEMENT
+============================================= */
+
+.alert-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.alert-rule-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #d7e8f8;
+  border-radius: 14px;
+  background: #f8fbff;
+}
+
+.alert-rule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.alert-rule-info strong {
+  color: #14558a;
+  font-size: 15px;
+}
+
+.alert-rule-info small {
+  color: #66819c;
+  font-size: 12px;
+}
+
+.alert-rule-enabled {
+  color: #16865b !important;
+}
+
+.alert-rule-disabled {
+  color: #999 !important;
+}
+
+.alert-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.alert-rule-actions button {
+  border: 1px solid #cfe2f5;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: white;
+  color: #176da8;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.alert-rule-actions button:last-child {
+  color: #d64b4b;
+}
+
+.add-alert-rule-button {
+  width: 100%;
+  padding: 12px;
+  border: 1px dashed #72b5e8;
+  border-radius: 12px;
+  background: #edf6ff;
+  color: #176da8;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.alert-rules-loading {
+  color: #66819c;
+  text-align: center;
+}
+
+
+/* =============================================
+   ALERT RULES - REFINED DESIGN
+============================================= */
+
+.alert-rules-card {
+  padding: 20px;
+}
+
+/* หัวข้อและไอคอนอยู่แนวเดียวกัน */
+.alert-rules-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.alert-rules-heading .setting-icon {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #f1f7ff;
+  border: 1px solid #dceafa;
+  font-size: 22px;
+}
+
+.alert-rules-heading .setting-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.alert-rules-heading .setting-content h3 {
+  margin: 0 0 5px;
+  font-size: 17px;
+  line-height: 1.4;
+  color: #174d79;
+}
+
+.alert-rules-heading .setting-content p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #7189a3;
+}
+
+/* รายการเกณฑ์ */
+.alert-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.alert-rule-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #dceafa;
+  border-radius: 15px;
+  background: #f7faff;
+}
+
+.alert-rule-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.alert-rule-info strong {
+  color: #185b91;
+  font-size: 16px;
+  line-height: 1.4;
+}
+
+.alert-rule-info small {
+  color: #7189a3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.alert-rule-info .alert-rule-enabled,
+.alert-rule-info .alert-rule-disabled {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.alert-rule-info .alert-rule-enabled {
+  color: #16865b;
+}
+
+.alert-rule-info .alert-rule-disabled {
+  color: #929eaa;
+}
+
+/* ปุ่มจัดการ */
+.alert-rule-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+.alert-rule-actions button {
+  min-height: 38px;
+  padding: 7px 11px;
+  border: 1px solid #d5e5f6;
+  border-radius: 10px;
+  background: white;
+  color: #2677b3;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.alert-rule-actions button:last-child {
+  color: #d65a5a;
+}
+
+/* ปุ่มเพิ่มเกณฑ์ */
+.add-alert-rule-button {
+  width: 100%;
+  min-height: 48px;
+  border: 1px dashed #8bbce8;
+  border-radius: 13px;
+  background: #edf6ff;
+  color: #176da8;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s ease;
+}
+
+.add-alert-rule-button:active {
+  background: #dceeff;
+}
+
+@media (max-width: 380px) {
+  .alert-rule-item {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .alert-rule-actions {
+    gap: 4px;
+  }
+
+  .alert-rule-actions button {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+}
