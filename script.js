@@ -1781,52 +1781,89 @@ getElement("saveSettingsBtn")
   .addEventListener("click", saveSettings);
 
 
-// =============================================
-// 25. INITIALIZE APPLICATION
-// =============================================
+const LIFF_ID = "2012846813-iQcPzZ7C";
 
-async function initializeApp() {
-  // ตั้งค่าเครื่องเริ่มต้น
-  selectHomeDevice("device_02");
-
-  getElement("settingsDeviceFilter").value =
-    "device_02";
-
-  selectedSettingsDevice = "device_02";
-
-  // กำหนดวันที่เริ่มต้นของกราฟ
-  getElement("dateFilter").value =
-    getTodayDate();
-
-  
-  // เลือกหน้าเริ่มต้นจาก URL
-  const params = new URLSearchParams(window.location.search);
-  const requestedPage = params.get("page");
-
+// อ่านหน้าที่ต้องการเปิดจาก URL หรือ LIFF state
+function getInitialPage() {
   const pageMap = {
     home: "homePage",
     history: "historyPage",
     settings: "settingsPage"
   };
 
-  const initialPage = pageMap[requestedPage] || "homePage";
+  const params = new URLSearchParams(window.location.search);
 
-  // เปิดหน้าตามปุ่มที่ผู้ใช้เลือก
-  showPage(initialPage);
+  // กรณีเปิดผ่าน GitHub Pages โดยตรง
+  let requestedPage = params.get("page");
 
+  // กรณีเปิดผ่าน LINE MINI App
+  if (!requestedPage) {
+    const liffState = params.get("liff.state");
 
-  // โหลดข้อมูลทั้งสองเครื่อง
-  await Promise.all([
-    loadAllLatestData(),
-    loadAllStaff()
-  ]);
+    if (liffState) {
+      const stateParams = new URLSearchParams(
+        liffState.startsWith("?")
+          ? liffState.substring(1)
+          : liffState
+      );
 
-  console.log("Water Dispenser Dashboard พร้อมทำงาน");
+      requestedPage = stateParams.get("page");
+    }
+  }
+
+  return pageMap[requestedPage] || "homePage";
 }
 
+  
+// =============================================
+// 25. INITIALIZE APPLICATION
+// =============================================
+
+
+async function initializeApp() {
+  try {
+    // ตั้งค่าเครื่องเริ่มต้น
+    selectHomeDevice("device_02");
+
+    getElement("settingsDeviceFilter").value = "device_02";
+    selectedSettingsDevice = "device_02";
+
+    // กำหนดวันที่เริ่มต้นของกราฟ
+    getElement("dateFilter").value = getTodayDate();
+
+    // เริ่มต้น LIFF ก่อนอ่านหน้าที่ต้องการเปิด
+    await liff.init({
+      liffId: LIFF_ID
+    });
+
+    // เลือกหน้าเริ่มต้น
+    const initialPage = getInitialPage();
+    showPage(initialPage);
+
+    // โหลดข้อมูลทั้งสองเครื่อง
+    await Promise.all([
+      loadAllLatestData(),
+      loadAllStaff()
+    ]);
+
+    console.log("Water Dispenser Dashboard พร้อมทำงาน");
+
+  } catch (error) {
+    console.error("เริ่มต้นระบบ LIFF ไม่สำเร็จ:", error);
+
+    // หาก LIFF เริ่มต้นไม่สำเร็จ ให้ยังเปิด Dashboard ได้
+    showPage(getInitialPage());
+
+    await Promise.all([
+      loadAllLatestData(),
+      loadAllStaff()
+    ]);
+  }
+}
 
 // เริ่มต้นระบบ
 initializeApp();
+
 
 
 // =============================================
