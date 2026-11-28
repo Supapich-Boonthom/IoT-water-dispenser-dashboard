@@ -1798,8 +1798,22 @@ async function initializeApp() {
   getElement("dateFilter").value =
     getTodayDate();
 
-  // เปิดหน้าแรก
-  showPage("homePage");
+  
+  // เลือกหน้าเริ่มต้นจาก URL
+  const params = new URLSearchParams(window.location.search);
+  const requestedPage = params.get("page");
+
+  const pageMap = {
+    home: "homePage",
+    history: "historyPage",
+    settings: "settingsPage"
+  };
+
+  const initialPage = pageMap[requestedPage] || "homePage";
+
+  // เปิดหน้าตามปุ่มที่ผู้ใช้เลือก
+  showPage(initialPage);
+
 
   // โหลดข้อมูลทั้งสองเครื่อง
   await Promise.all([
